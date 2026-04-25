@@ -95,17 +95,17 @@
 - [x] Smoke test: `npm test` → 34/34 pass ✅
 
 ### ── TIER 3 GATE CHECK ──
-- [ ] `npm test` → all 34 tests pass (no regressions)
-- [ ] No remaining `||` on data fields in `tradeService.js` INSERT params or `publisher.js` XADD fields
-- [ ] Commit: `fix(audit-t3): nullish coalescing in tradeService + publisher`
+- [x] `npm test` → all 34 tests pass (no regressions) ✅
+- [x] No remaining `||` on data fields in `tradeService.js` INSERT params or `publisher.js` XADD fields ✅
+- [x] Commit: `fix(audit-t3): nullish coalescing in tradeService + publisher` ✅ `85a0de5`
 
 ---
 
 ## ✅ Post-Fix Verification
 
-- [ ] Full clean rebuild: `docker compose down -v && docker compose up --build`
-- [ ] 388 trades seeded, 52 sessions
-- [ ] `npm test` → all pass
-- [ ] `curl /health` → integer `queueLag`
+- [x] Full clean rebuild: `docker compose down -v && docker compose up --build` ✅
+- [x] 388 trades seeded, 52 sessions ✅
+- [x] `npm test` → 34/34 pass ✅
+- [x] `curl /health` → integer `queueLag: 0` ✅
 - [ ] Final `git push origin main --force`
 
