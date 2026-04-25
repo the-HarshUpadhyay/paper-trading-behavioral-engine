@@ -29,3 +29,6 @@ desktop.ini
 
 # ─── Docker ──────────────────────────────────────────────────────────────────
 # Don't ignore docker-compose.yml or Dockerfile (we need those)
+
+# ─── Binaries ────────────────────────────────────────────────────────────────
+k6.exe
