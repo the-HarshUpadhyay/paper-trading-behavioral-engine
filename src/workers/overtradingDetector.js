@@ -27,21 +27,13 @@ async function computeOvertrading(trade) {
   const tradeCount = result.rows[0].count;
 
   if (tradeCount > 10) {
-    // Check if we already emitted an event for this window (avoid duplicates)
-    const existing = await pool.query(
-      `SELECT event_id FROM overtrading_events
-       WHERE user_id = $1
-         AND window_end = $2::timestamptz`,
-      [trade.userId, trade.entryAt]
+    // Atomic upsert — UNIQUE(user_id, window_end) prevents duplicates without TOCTOU race
+    await pool.query(
+      `INSERT INTO overtrading_events (user_id, window_start, window_end, trade_count, emitted_at)
+       VALUES ($1, $2::timestamptz - INTERVAL '30 minutes', $2::timestamptz, $3, NOW())
+       ON CONFLICT (user_id, window_end) DO NOTHING`,
+      [trade.userId, trade.entryAt, tradeCount]
     );
-
-    if (existing.rows.length === 0) {
-      await pool.query(
-        `INSERT INTO overtrading_events (user_id, window_start, window_end, trade_count, emitted_at)
-         VALUES ($1, $2::timestamptz - INTERVAL '30 minutes', $2::timestamptz, $3, NOW())`,
-        [trade.userId, trade.entryAt, tradeCount]
-      );
-    }
   }
 }
 

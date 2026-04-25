@@ -2,7 +2,10 @@
 // Phase 3: Write API
 
 const { Pool } = require('pg');
+const pino = require('pino');
 const config = require('../config');
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 let pool;
 
@@ -23,7 +26,7 @@ function getPool() {
 
     // Log pool errors (don't crash the process)
     pool.on('error', (err) => {
-      console.error('[database] Unexpected pool error:', err.message);
+      logger.error({ err: err.message }, 'Unexpected pool error');
     });
   }
   return pool;

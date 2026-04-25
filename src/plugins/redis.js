@@ -2,7 +2,10 @@
 // Phase 3: Write API
 
 const Redis = require('ioredis');
+const pino = require('pino');
 const config = require('../config');
+
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 let client;
 
@@ -22,7 +25,7 @@ function getRedis() {
     });
 
     client.on('error', (err) => {
-      console.error('[redis] Connection error:', err.message);
+      logger.error({ err: err.message }, 'Redis connection error');
     });
   }
   return client;
