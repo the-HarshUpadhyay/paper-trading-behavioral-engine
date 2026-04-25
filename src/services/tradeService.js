@@ -3,6 +3,8 @@
 
 const { getPool } = require('../plugins/database');
 const { publishTradeClose } = require('./publisher');
+const pino = require('pino');
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 // ── Column Mapping ──────────────────────────────────────────────────────────
 
@@ -118,13 +120,25 @@ async function createTrade(input) {
   if (insertResult.rows.length > 0) {
     const trade = rowToTrade(insertResult.rows[0]);
 
-    // Publish to Redis Stream if trade is closed
+    // Publish to Redis Stream if trade is closed (retry once on failure)
     if (trade.status === 'closed') {
-      try {
-        await publishTradeClose(trade);
-      } catch (err) {
-        // Log but don't fail the request — trade is already persisted
-        console.error('[tradeService] Failed to publish trade to stream:', err.message);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await publishTradeClose(trade);
+          break;
+        } catch (err) {
+          if (attempt === 2) {
+            // Final failure — structured log, don't fail the request
+            logger.error({
+              tradeId: trade.tradeId,
+              userId: trade.userId,
+              attempt,
+              err: err.message,
+            }, 'Failed to publish trade to stream after retries');
+          } else {
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
       }
     }
 

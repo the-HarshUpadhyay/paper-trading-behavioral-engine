@@ -49,14 +49,13 @@ router.get('/health', async (req, res) => {
     if (r.status !== 'ready') await r.connect();
     await r.ping();
 
-    // Try to get stream lag from consumer group info
+    // Get pending message count as queue lag (integer)
     try {
-      const groups = await r.xinfo('GROUPS', config.stream.name);
-      if (groups && groups.length > 0) {
-        queueLag = groups[0][7] || 0; // lag field
-      }
+      const pending = await r.xpending(config.stream.name, config.stream.group);
+      // XPENDING returns [totalPending, minId, maxId, [[consumer, count], ...]]
+      queueLag = pending && pending[0] ? parseInt(pending[0], 10) : 0;
     } catch {
-      // Stream may not exist yet — that's ok
+      // Stream or consumer group may not exist yet — that's ok
       queueLag = 0;
     }
   } catch {

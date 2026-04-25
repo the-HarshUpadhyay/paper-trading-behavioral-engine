@@ -73,12 +73,12 @@ async function seed() {
                 trade.entryAt,
                 trade.exitAt,
                 trade.status,
-                trade.outcome || null,
-                trade.pnl || null,
-                trade.planAdherence || null,
-                trade.emotionalState || null,
-                trade.entryRationale || null,
-                trade.revengeFlag || false,
+                trade.outcome ?? null,
+                trade.pnl ?? null,
+                trade.planAdherence ?? null,
+                trade.emotionalState ?? null,
+                trade.entryRationale ?? null,
+                trade.revengeFlag ?? false,
               ]
             );
             tradeCount++;
