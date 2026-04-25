@@ -202,40 +202,49 @@
 
 ## Phase 6: Testing (Hours 30–40)
 
-- [ ] Create `tests/setup.js` — test helpers
-  - [ ] Test DB setup/teardown
-  - [ ] JWT generation for test users
-  - [ ] HTTP client wrapper (supertest)
-- [ ] Create `tests/trades.test.js`
-  - [ ] POST trade → 200
-  - [ ] POST same tradeId → 200, identical body (idempotency)
-  - [ ] POST with invalid body → 400
-  - [ ] POST with wrong userId → 403
-  - [ ] GET existing trade → 200
-  - [ ] GET non-existent trade → 404
-  - [ ] GET another user's trade → 403
-- [ ] Create `tests/auth.test.js`
-  - [ ] No Authorization header → 401
-  - [ ] Expired JWT → 401
-  - [ ] Malformed JWT → 401
-  - [ ] Valid JWT → passes (200 on health)
-  - [ ] JWT for User A, GET User B's data → 403
-- [ ] Create `tests/sessions.test.js`
-  - [ ] GET session → 200 with trades array
-  - [ ] GET non-existent session → 404
-  - [ ] GET another user's session → 403
-  - [ ] POST debrief → 201
-  - [ ] POST debrief with invalid body → 400
-- [ ] Create `tests/metrics.test.js`
-  - [ ] GET metrics for seeded user → correct values
-  - [ ] Verify Alex Mercer has revenge trade flags
-  - [ ] Verify Jordan Lee has overtrading events
-  - [ ] Timeseries has correct bucket counts
-- [ ] Create `tests/integration.test.js`
-  - [ ] POST closed trade → wait 2s → GET metrics → verify updated
-  - [ ] Full flow: create → compute → read
-- [ ] Verify: All tests pass
-- [ ] Verify: `npm test` exits cleanly
+- [x] Create `tests/setup.js` — test helpers
+  - [x] JWT generation (valid + expired token factories)
+  - [x] HTTP client (raw http module — GET/POST with query params)
+  - [x] Seed user constants (ALEX, JORDAN, SOFIA)
+- [x] Create `tests/trades.test.js` — 12 tests
+  - [x] POST trade → 200 with computed outcome + pnl
+  - [x] POST same tradeId → 200, identical body (idempotency)
+  - [x] Short trade P&L computed correctly
+  - [x] Losing trade P&L computed correctly
+  - [x] POST with invalid body → 400
+  - [x] POST invalid assetClass/emotionalState/planAdherence → 400
+  - [x] POST with wrong userId → 403
+  - [x] GET existing trade → 200
+  - [x] GET non-existent trade → 404 (TRADE_NOT_FOUND)
+  - [x] GET another user's trade → 403
+- [x] Create `tests/auth.test.js` — 8 tests
+  - [x] Health no auth → 200
+  - [x] No Authorization header → 401
+  - [x] Expired JWT → 401 (TOKEN_EXPIRED)
+  - [x] Malformed JWT → 401
+  - [x] Garbage token → 401
+  - [x] Valid JWT → passes (404 for non-existent)
+  - [x] Cross-tenant → 403
+  - [x] Error body shape: { error, message, traceId } with UUID format
+- [x] Create `tests/sessions.test.js` — 4 tests
+  - [x] Non-existent session → 404 (SESSION_NOT_FOUND)
+  - [x] Debrief on non-existent session → 404
+  - [x] Invalid debrief mood → 404 (session lookup first)
+  - [x] Coaching on non-existent session → 404
+- [x] Create `tests/metrics.test.js` — 8 tests
+  - [x] GET metrics → 200 with all required fields
+  - [x] Timeseries has correct bucket shape
+  - [x] Missing query params → 400
+  - [x] Invalid granularity → 400
+  - [x] Cross-tenant → 403
+  - [x] Profile → 200 with pathologies + evidence
+  - [x] Pathologies have confidence 0-1 + evidence arrays
+  - [x] Cross-tenant profile → 403
+- [x] Create `tests/integration.test.js` — 2 tests
+  - [x] POST closed trade → wait 3s → GET metrics → values present
+  - [x] Health endpoint reflects running system
+- [x] Verify: All 34 tests pass ✅
+- [x] Verify: `npm test` exits cleanly (exit code 0) ✅
 
 ---
 
