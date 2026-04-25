@@ -1,0 +1,68 @@
+services:
+  # ─── PostgreSQL 16 ──────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nevup
+      POSTGRES_PASSWORD: nevup
+      POSTGRES_DB: nevup
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nevup -d nevup"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── Redis 7 (Streams + AOF) ───────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─── API Server (Express.js) ───────────────────────────────────────────────
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://nevup:nevup@postgres:5432/nevup
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: 97791d4db2aa5f689c3cc39356ce35762f0a73aa70923039d8ef72a2840a1b02
+      PORT: 3000
+      NODE_ENV: production
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # CMD from Dockerfile: migrate → seed → server
+
+  # ─── Worker (Metric Consumer) ──────────────────────────────────────────────
+  worker:
+    build: .
+    command: ["node", "src/workers/index.js"]
+    environment:
+      DATABASE_URL: postgresql://nevup:nevup@postgres:5432/nevup
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      LOG_LEVEL: info
+    depends_on:
+      api:
+        condition: service_started
+    restart: on-failure
+
+volumes:
+  pgdata:
+  redisdata:

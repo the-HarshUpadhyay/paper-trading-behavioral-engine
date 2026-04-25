@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log*
+.env
+.planning
+loadtest/results
+tests
+*.md
+!README.md

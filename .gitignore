@@ -1,0 +1,31 @@
+# ─── Dependencies ────────────────────────────────────────────────────────────
+node_modules/
+
+# ─── Environment ─────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+pino-*.log
+
+# ─── Load Test Results ───────────────────────────────────────────────────────
+loadtest/results/*.html
+loadtest/results/*.json
+loadtest/results/*.csv
+
+# ─── OS Files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ─────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Docker ──────────────────────────────────────────────────────────────────
+# Don't ignore docker-compose.yml or Dockerfile (we need those)
