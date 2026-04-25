@@ -90,6 +90,7 @@ Before moving from Tier 1 → Tier 2, run ALL tier gate checks:
 |---|---|
 | Tier 1: MUST FIX | `curl /health` → `queueLag` is integer. `npm test` → all green. Seed data has no null P&L for closed trades. |
 | Tier 2: HIGH VALUE | `\d overtrading_events` shows unique constraint. `docker compose logs api` → all JSON lines. `npm test` → all green. |
+| Tier 3: POST-AUDIT | No `||` on data fields in tradeService.js INSERT or publisher.js XADD. `npm test` → all green. |
 
 **Do NOT skip gate checks. A broken fix cascades into more broken things.**
 
@@ -152,4 +153,7 @@ docker compose up --build -d    # rebuilds + re-runs migrate → seed → server
 | T1 | Fix 3: seed.js nullish | 2 min | — | — | — |
 | T2 | Fix 4: overtrading dedup | 10 min | — | — | — |
 | T2 | Fix 5: structured API logs | 5 min | — | — | — |
-| — | **Total** | **~37 min** | — | — | — |
+| T3 | Fix 6: exitPrice null coercion | 2 min | — | — | — |
+| T3 | Fix 7: entryRationale empty string | 2 min | — | — | — |
+| T3 | Fix 8: publisher nullish | 2 min | — | — | — |
+| — | **Total** | **~43 min** | — | — | — |

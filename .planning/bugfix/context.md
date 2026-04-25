@@ -201,3 +201,87 @@ Replace line 25:
 ```javascript
 logger.error({ err: err.message }, 'Redis connection error');
 ```
+
+---
+
+## Fix 6: `exitPrice` Null Coercion (🔴 MUST FIX)
+
+### What's wrong
+[src/services/tradeService.js](file:///c:/Users/harsh/paper-trading-behavioral-engine/src/services/tradeService.js) line 106 in the `createTrade()` INSERT parameter array:
+```javascript
+input.exitPrice || null,  // line 106 ← BUG: exitPrice=0 becomes null
+```
+
+JavaScript `||` treats `0` as falsy. A closed trade with `exitPrice: 0` (valid for delisted assets, zero-cost closes) is stored with `exit_price = NULL`. This causes `computePnlAndOutcome()` to return `{pnl: null, outcome: null}` — the trade is treated as open, never published to Redis, and never processed by the metric pipeline.
+
+### Spec requirement
+OpenAPI `Trade` schema — `exitPrice` is `type: number, format: decimal, nullable: true`. The value `0` is a valid number and must not be coerced to `null`.
+
+Downstream impact chain:
+1. `computePnlAndOutcome()` line 50: `trade.exitPrice == null` → returns `{pnl: null, outcome: null}`
+2. Line 124: `trade.status === 'closed'` is true, but `outcome` is null → trade is published without computed P&L
+3. Metric workers receive a trade with `pnl: 0, outcome: ''` — all 5 metrics get wrong input
+
+### Exact code change
+Line 106:
+```javascript
+input.exitPrice ?? null,
+```
+
+### Why `??` is correct
+`??` (nullish coalescing) only falls through on `null` or `undefined`. `0 ?? null` → `0`. `null ?? null` → `null`. No behavior change for actual nulls; preserves valid zeros.
+
+---
+
+## Fix 7: `entryRationale` Empty String Destroyed (🟠 OPTIONAL)
+
+### What's wrong
+[src/services/tradeService.js](file:///c:/Users/harsh/paper-trading-behavioral-engine/src/services/tradeService.js) line 115:
+```javascript
+input.entryRationale || null,  // line 115 ← "" becomes null
+```
+
+An explicit empty string `""` is coerced to `null`. The OpenAPI spec defines `entryRationale` as `type: string, maxLength: 500, nullable: true` — empty string is a valid string value.
+
+### Additional lines (same pattern, zero-risk)
+```javascript
+input.exitAt || null,          // line 109 — safe in practice (ISO string never falsy)
+input.planAdherence || null,   // line 113 — safe (DB constraint 1-5, never 0)
+input.emotionalState || null,  // line 114 — safe (enum string, never empty)
+```
+
+These are safe today but should use `??` for consistency with Fix 3 (seed.js) and Fix 6.
+
+### Exact code change
+Lines 109, 113, 114, 115:
+```javascript
+input.exitAt ?? null,          // line 109
+input.planAdherence ?? null,   // line 113
+input.emotionalState ?? null,  // line 114
+input.entryRationale ?? null,  // line 115
+```
+
+---
+
+## Fix 8: Publisher Nullish Consistency (🟠 OPTIONAL)
+
+### What's wrong
+[src/services/publisher.js](file:///c:/Users/harsh/paper-trading-behavioral-engine/src/services/publisher.js) lines 58–61 use `||` for XADD field defaults:
+```javascript
+'outcome', trade.outcome || '',                    // line 58
+'pnl', String(trade.pnl || 0),                     // line 59 — pnl=0 → "0" (works, but fragile)
+'planAdherence', String(trade.planAdherence || ''), // line 60
+'emotionalState', trade.emotionalState || '',       // line 61
+```
+
+No active data loss here — the publisher is only called for closed trades with computed pnl. But `??` is safer by principle and consistent with the seed.js and tradeService.js fixes.
+
+### Exact code change
+Lines 58–61:
+```javascript
+'outcome', trade.outcome ?? '',
+'pnl', String(trade.pnl ?? 0),
+'planAdherence', String(trade.planAdherence ?? ''),
+'emotionalState', trade.emotionalState ?? '',
+```
+

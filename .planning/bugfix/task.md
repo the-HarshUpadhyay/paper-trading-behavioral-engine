@@ -64,7 +64,40 @@
 - [x] `docker compose exec postgres psql -U nevup -d nevup -c "\d overtrading_events"` → shows `uq_overtrading_user_window` ✅
 - [x] `npm test` → all 34 tests pass (no regressions) ✅
 - [x] `docker compose logs api 2>&1` → all lines structured JSON, no `console.error` ✅
-- [ ] Commit: `fix(audit-t2): overtrading dedup, structured API logs`
+- [x] Commit: `fix(audit-t2): overtrading dedup, structured API logs` ✅ `a6fbdad`
+
+---
+
+## 🔴 Tier 3: POST-AUDIT FIXES (Second-Pass Audit)
+
+> **Source**: [definitive_audit_v2.md](file:///C:/Users/harsh/.gemini/antigravity/brain/943ffbd0-270f-4ec9-9b05-2909c1557edc/definitive_audit_v2.md)
+
+### Fix 6: `exitPrice` null coercion — `||` treats `0` as falsy 🔴
+- [x] `src/services/tradeService.js` line 106:
+  - [x] `input.exitPrice || null` → `input.exitPrice ?? null`
+- [x] Smoke test: `npm test` → 34/34 pass ✅
+
+### Fix 7: `entryRationale` empty string destroyed 🟠
+- [x] `src/services/tradeService.js` line 115:
+  - [x] `input.entryRationale || null` → `input.entryRationale ?? null`
+- [x] Also fix remaining `||` on adjacent nullable INSERT params (zero-risk consistency):
+  - [x] Line 109: `input.exitAt || null` → `input.exitAt ?? null`
+  - [x] Line 113: `input.planAdherence || null` → `input.planAdherence ?? null`
+  - [x] Line 114: `input.emotionalState || null` → `input.emotionalState ?? null`
+- [x] Smoke test: `npm test` → 34/34 pass ✅
+
+### Fix 8: Publisher nullish consistency 🟠
+- [x] `src/services/publisher.js` XADD fields:
+  - [x] Line 58: `trade.outcome || ''` → `trade.outcome ?? ''`
+  - [x] Line 59: `String(trade.pnl || 0)` → `String(trade.pnl ?? 0)`
+  - [x] Line 60: `String(trade.planAdherence || '')` → `String(trade.planAdherence ?? '')`
+  - [x] Line 61: `trade.emotionalState || ''` → `trade.emotionalState ?? ''`
+- [x] Smoke test: `npm test` → 34/34 pass ✅
+
+### ── TIER 3 GATE CHECK ──
+- [ ] `npm test` → all 34 tests pass (no regressions)
+- [ ] No remaining `||` on data fields in `tradeService.js` INSERT params or `publisher.js` XADD fields
+- [ ] Commit: `fix(audit-t3): nullish coalescing in tradeService + publisher`
 
 ---
 
@@ -75,3 +108,4 @@
 - [ ] `npm test` → all pass
 - [ ] `curl /health` → integer `queueLag`
 - [ ] Final `git push origin main --force`
+

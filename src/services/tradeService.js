@@ -103,16 +103,16 @@ async function createTrade(input) {
       input.assetClass,
       input.direction,
       input.entryPrice,
-      input.exitPrice || null,
+      input.exitPrice ?? null,
       input.quantity,
       input.entryAt,
-      input.exitAt || null,
+      input.exitAt ?? null,
       input.status,
       outcome,
       pnl,
-      input.planAdherence || null,
-      input.emotionalState || null,
-      input.entryRationale || null,
+      input.planAdherence ?? null,
+      input.emotionalState ?? null,
+      input.entryRationale ?? null,
     ]
   );
 

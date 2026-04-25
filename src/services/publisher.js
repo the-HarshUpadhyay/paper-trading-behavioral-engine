@@ -55,10 +55,10 @@ async function publishTradeClose(trade) {
     'entryAt', trade.entryAt,
     'exitAt', trade.exitAt,
     'status', trade.status,
-    'outcome', trade.outcome || '',
-    'pnl', String(trade.pnl || 0),
-    'planAdherence', String(trade.planAdherence || ''),
-    'emotionalState', trade.emotionalState || '',
+    'outcome', trade.outcome ?? '',
+    'pnl', String(trade.pnl ?? 0),
+    'planAdherence', String(trade.planAdherence ?? ''),
+    'emotionalState', trade.emotionalState ?? '',
   );
 }
 
