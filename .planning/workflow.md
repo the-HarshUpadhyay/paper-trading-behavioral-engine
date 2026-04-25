@@ -230,7 +230,7 @@ Update this table as you complete phases:
 | 3. Write API | 6h | 19:23–19:27 IST | ~4 min | f4a816d |
 | 4. Pipeline | 8h | 19:31–19:35 IST | ~4 min | f4a816d |
 | 5. Read API | 8h | 19:36–19:40 IST | ~4 min | f4a816d |
-| 6. Testing | 10h | — | — | — |
-| 7. Load Test | 8h | — | — | — |
-| 8. Deploy | 12h | — | — | — |
-| **Total** | **60h** | | **~47 min so far** | |
+| 6. Testing | 10h | Phase 6 session | ~15 min | fbd224a |
+| 7. Load Test | 8h | Phase 7 session | ~20 min | 9bed393 |
+| 8. Deploy | 12h | 00:00 IST 26-Apr-2026 | — | — |
+| **Total** | **60h** | | **~1.5 h so far** | |

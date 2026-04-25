@@ -274,31 +274,31 @@
 
 ## Phase 8: Polish + Deploy (Hours 48–72)
 
-- [ ] Create `DECISIONS.md` with 7 decisions
-  - [ ] Decision 1: Express.js over Fastify
-  - [ ] Decision 2: PostgreSQL 16, no ORM
-  - [ ] Decision 3: Redis Streams over Kafka/RabbitMQ
-  - [ ] Decision 4: Separate worker container
-  - [ ] Decision 5: Application-layer tenancy
-  - [ ] Decision 6: Structured logging approach
-  - [ ] Decision 7: Seeding strategy
-  - [ ] Include `EXPLAIN ANALYZE` for key queries
-- [ ] Create comprehensive `README.md`
-  - [ ] Quick start: `docker compose up`
-  - [ ] Architecture diagram
-  - [ ] API endpoints summary
-  - [ ] Running tests
-  - [ ] Running load tests
-  - [ ] Environment variables
-- [ ] Deploy to chosen platform
-  - [ ] Push to Git
+- [x] Create `DECISIONS.md` with 7 decisions
+  - [x] Decision 1: Express.js over Fastify
+  - [x] Decision 2: PostgreSQL 16, no ORM
+  - [x] Decision 3: Redis Streams over Kafka/RabbitMQ
+  - [x] Decision 4: Separate worker container
+  - [x] Decision 5: Application-layer tenancy
+  - [x] Decision 6: Structured logging approach
+  - [x] Decision 7: Seeding strategy
+  - [x] Include `EXPLAIN ANALYZE` for key queries
+- [x] Create comprehensive `README.md`
+  - [x] Quick start: `docker compose up`
+  - [x] Architecture diagram
+  - [x] API endpoints summary
+  - [x] Running tests
+  - [x] Running load tests
+  - [x] Environment variables
+- [/] Deploy to chosen platform
+  - [/] Push to Git
   - [ ] Deploy docker-compose stack
   - [ ] Verify health endpoint is live
   - [ ] Run smoke tests against live URL
-- [ ] Final verification
+- [/] Final verification
   - [ ] All 7 endpoints return correct responses
   - [ ] Idempotency works
   - [ ] Cross-tenant → 403
   - [ ] Load test passes on deployed instance
   - [ ] Structured JSON logs visible
-  - [ ] README is clear and complete
+  - [x] README is clear and complete
