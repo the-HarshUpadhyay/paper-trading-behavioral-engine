@@ -270,7 +270,8 @@ See [DECISIONS.md](DECISIONS.md) for the full engineering rationale with `EXPLAI
 
 ## 🌐 Deployment
 
-**Live URL**: [`http://57.159.31.142:3000`](http://57.159.31.142:3000)
+**Live API URL**: [`http://57.159.31.142:3000`](http://57.159.31.142:3000)  
+**K6 Load Test Report**: [`http://57.159.31.142:8080`](http://57.159.31.142:8080)
 
 The service is deployed on an Azure VM (Ubuntu 24.04, Standard B2ats_v2) running the same `docker compose up --build` stack. The deployment is identical to what you get locally — same containers, same compose file, zero platform-specific changes.
 
