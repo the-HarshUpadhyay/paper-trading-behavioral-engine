@@ -1,0 +1,12 @@
+{
+  "tradeId": "00b4ec71-1f68-4367-9bf8-4f4c69d7c492",
+  "totalRequests": 5101,
+  "successful": 5101,
+  "conflicts409": 0,
+  "errors500": 0,
+  "bodyMismatches": 0,
+  "passRate": 1,
+  "p95": 2.78,
+  "droppedIterations": 0,
+  "verdict": "IDEMPOTENCY_PROVEN"
+}

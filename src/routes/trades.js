@@ -74,9 +74,17 @@ router.post('/trades', async (req, res, next) => {
     }
 
     // 3. Create trade (idempotent)
-    const { trade } = await createTrade(body);
+    const { trade, isNew } = await createTrade(body);
 
-    // 4. Always return 200 (spec: both new and duplicate return 200)
+    // 4. Tenancy check on conflict path: if ON CONFLICT DO NOTHING fired,
+    //    the SELECT fallback may return a trade owned by a DIFFERENT user.
+    //    Returning it would leak cross-tenant data.
+    if (!isNew && trade.userId !== req.userId) {
+      const err = errors.forbidden('Cross-tenant access denied.', req.traceId);
+      return res.status(err.statusCode).json(err.body);
+    }
+
+    // 5. Always return 200 (spec: both new and duplicate return 200)
     return res.status(200).json(trade);
   } catch (err) {
     next(err);

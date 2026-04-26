@@ -9,7 +9,23 @@
 
 ---
 
-## Architecture
+## 🚀 Overview
+
+A production-grade backend that ingests closed trades, computes behavioral analytics asynchronously via Redis Streams, and serves queryable metrics — all with strict multi-tenancy, idempotent writes, and structured observability.
+
+**Key guarantees:**
+
+| Guarantee | Implementation |
+|---|---|
+| Correctness | ACID writes, `DECIMAL(18,8)` P&L, server-computed `outcome` + `pnl` |
+| Idempotency | `INSERT ... ON CONFLICT (trade_id) DO NOTHING` — same trade twice → same 200 |
+| Multi-tenancy | JWT `sub` === resource `userId` on every endpoint; cross-tenant → 403 |
+| Performance | 200 req/s sustained, p95 write = 4.19ms, p95 read = 8.48ms |
+| Observability | Structured JSON logs with `traceId`, `userId`, `latency`, `statusCode` on every request |
+
+---
+
+## 🏗 Architecture
 
 ```
                     ┌─────────────────────────────────────────────┐
@@ -39,269 +55,196 @@
                     └─────────────────────────────────────────────┘
 ```
 
-**Data Flow**: Client → POST /trades → API inserts trade + XADD to Redis Stream → Worker consumes via XREADGROUP → computes 5 behavioral metrics → UPSERTs results to PostgreSQL → Client reads via GET endpoints.
+**Data Flow**: `POST /trades` → INSERT to Postgres + `XADD` to Redis Stream → Worker consumes via `XREADGROUP` → computes 5 behavioral metrics → UPSERTs to Postgres → Client queries via `GET` endpoints.
 
 ---
 
-## Quick Start
+## ⚡ Hard Requirements Coverage
+
+| Requirement | Implementation | Proof |
+|---|---|---|
+| **Idempotent Write** | `INSERT ... ON CONFLICT (trade_id) DO NOTHING`; conflict-path tenancy guard | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 15 tests |
+| **Throughput ≥ 200 req/s** | `pg.Pool(max:20)`, async Redis publish, `constant-arrival-rate` k6 executor | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) — 200 req/s sustained 60s |
+| **Write p95 ≤ 150ms** | Connection pooling, indexed conflict resolution, zero sync analytics | Load report — **4.19ms** (35× headroom) |
+| **Read p95 ≤ 200ms** | Composite indexes, bitmap scans, in-memory aggregation | Load report — **8.48ms** (23× headroom) |
+| **Async Pipeline** | Redis Streams `XADD`/`XREADGROUP`, separate worker container, `XACK` delivery | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 32 tests |
+| **Multi-tenancy** | JWT `sub` enforcement at path, body, and resource levels; 403 for cross-tenant | [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) — 43 tests |
+| **Observability** | pino-http structured JSON; traceId + userId + latency + statusCode on every log | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) — 37 tests |
+| **Health Check** | `GET /health` returns `dbConnection`, `queueLag`, `status`, `timestamp` | Observability report — Suite 6 |
+
+---
+
+## 🐳 Running the System
 
 ```bash
-# Clone
-git clone https://github.com/the-HarshUpadhyay/paper-trading-behavioral-engine.git
-cd paper-trading-behavioral-engine
-
-# Start everything (builds + migrates + seeds + starts API + worker)
 docker compose up --build
+```
 
-# Verify (in a new terminal)
+**That's it.** The API container runs migrations → seeds 388 trades + 52 sessions → starts Express. The worker starts consuming Redis Streams automatically.
+
+```bash
+# Verify
 curl http://localhost:3000/health
+# → {"status":"ok","dbConnection":"connected","queueLag":0,"timestamp":"..."}
 ```
 
-Expected health response:
-```json
-{
-  "status": "ok",
-  "dbConnection": "connected",
-  "queueLag": 0,
-  "timestamp": "2025-04-25T12:00:00.000Z"
-}
-```
-
-**That's it.** Zero manual steps. The API container runs migrations → seeds 388 trades + 52 sessions → starts the Express server. The worker starts consuming the Redis Stream automatically.
+Zero manual steps. No `.env` file required. All defaults are set in `docker-compose.yml`.
 
 ---
 
-## API Endpoints
+## 📡 API Reference
 
-All endpoints (except `/health`) require JWT authentication via `Authorization: Bearer <token>`.
-
-### Generate a test token
-
-```bash
-# Install dependencies locally (needed for token generation)
-npm install
-
-# Generate a 24-hour JWT for seed user Alex Mercer
-node scripts/generate-token.js f412f236-4edc-47a2-8f54-8763a6ed2ce8
-```
-
-### Endpoints Summary
+Full spec: [`given/nevup_openapi.yaml`](given/nevup_openapi.yaml)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/trades` | ✅ | Create a trade (idempotent on `tradeId`) |
 | `GET` | `/trades/:tradeId` | ✅ | Get a single trade |
-| `GET` | `/sessions/:sessionId` | ✅ | Get session summary with trades |
+| `GET` | `/sessions/:sessionId` | ✅ | Session summary with trades |
 | `POST` | `/sessions/:sessionId/debrief` | ✅ | Save a session debrief |
 | `GET` | `/sessions/:sessionId/coaching` | ✅ | SSE coaching stream |
 | `GET` | `/users/:userId/metrics` | ✅ | Behavioral metrics with timeseries |
 | `GET` | `/users/:userId/profile` | ✅ | Behavioral profile & pathologies |
 | `GET` | `/health` | ❌ | Health check (no auth) |
 
-### Example Requests
+### Quick Test
 
 ```bash
-# Set your token
+# Generate a 24-hour JWT for seed user Alex Mercer
 TOKEN=$(node scripts/generate-token.js f412f236-4edc-47a2-8f54-8763a6ed2ce8)
 
-# POST a trade (idempotent)
+# POST a trade (idempotent — submit twice, get same 200)
 curl -X POST http://localhost:3000/trades \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
-  -d '{
-    "tradeId": "test-trade-001",
-    "userId": "f412f236-4edc-47a2-8f54-8763a6ed2ce8",
-    "sessionId": "test-session-001",
-    "asset": "AAPL",
-    "assetClass": "equity",
-    "direction": "long",
-    "entryPrice": 178.45,
-    "exitPrice": 182.30,
-    "quantity": 10,
-    "entryAt": "2025-01-06T09:30:00Z",
-    "exitAt": "2025-01-06T10:15:00Z",
-    "status": "closed",
-    "planAdherence": 4,
-    "emotionalState": "calm",
-    "entryRationale": "Breakout above 178 resistance"
-  }'
-
-# GET trade (same one — proves idempotency)
-curl http://localhost:3000/trades/test-trade-001 \
-  -H "Authorization: Bearer $TOKEN"
-
-# GET session with all trades
-curl http://localhost:3000/sessions/sess-alex-001 \
-  -H "Authorization: Bearer $TOKEN"
+  -d '{"tradeId":"test-001","userId":"f412f236-4edc-47a2-8f54-8763a6ed2ce8","sessionId":"sess-001","asset":"AAPL","assetClass":"equity","direction":"long","entryPrice":178.45,"exitPrice":182.30,"quantity":10,"entryAt":"2025-01-06T09:30:00Z","exitAt":"2025-01-06T10:15:00Z","status":"closed","planAdherence":4,"emotionalState":"calm","entryRationale":"Breakout above 178 resistance"}'
 
 # GET behavioral metrics
 curl "http://localhost:3000/users/f412f236-4edc-47a2-8f54-8763a6ed2ce8/metrics?from=2025-01-01T00:00:00Z&to=2025-12-31T23:59:59Z&granularity=daily" \
   -H "Authorization: Bearer $TOKEN"
+```
 
-# GET behavioral profile
-curl http://localhost:3000/users/f412f236-4edc-47a2-8f54-8763a6ed2ce8/profile \
-  -H "Authorization: Bearer $TOKEN"
+---
+
+## 🔐 Authentication & Tenancy
+
+- **JWT (HS256)**: All endpoints except `/health` require `Authorization: Bearer <token>`
+- **Tenancy enforcement**: Three layers — path-level, body-level, and resource-level
+- **Cross-tenant rule**: Always returns **403 Forbidden**, never 404 (prevents existence leaks)
+- **Conflict-path guard**: Even the idempotency `ON CONFLICT` fallback enforces tenancy — a [CVE-level data leak](tests/MULTI_TENANCY_REPORT.md#5-vulnerability-discovered--fixed) was discovered and patched during security testing
+
+```
+JWT.sub  ─┬─ Path:     req.params.userId === req.userId      (GET /users/:userId/*)
+           ├─ Body:     req.body.userId === req.userId        (POST /trades)
+           └─ Resource: trade.userId === req.userId           (GET /trades/:tradeId)
+                        Fail at any layer → 403 FORBIDDEN
+```
+
+---
+
+## 🧪 Testing Strategy
+
+Tests run against the **live Docker stack** — no mocks.
+
+```bash
+# Integration tests (inside Docker container)
+docker run --rm \
+  --network paper-trading-behavioral-engine_default \
+  -v "$(pwd)/tests:/app/tests" -v "$(pwd)/src:/app/src" \
+  -v "$(pwd)/package.json:/app/package.json" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -w /app -e TEST_BASE_URL=http://api:3000 \
+  node:20-alpine sh -c "npm install dotenv && node --test tests/*.test.js"
+```
+
+| Suite | Tests | What It Proves |
+|-------|-------|----------------|
+| [`auth.test.js`](tests/auth.test.js) | 8 | JWT verification, expiry, missing header |
+| [`trades.test.js`](tests/trades.test.js) | 12 | Idempotency, P&L computation, validation |
+| [`idempotency.test.js`](tests/idempotency.test.js) | 15 | Concurrent duplicate writes, DB-level verification |
+| [`sessions.test.js`](tests/sessions.test.js) | 4 | Session lookup, debrief, coaching SSE |
+| [`metrics.test.js`](tests/metrics.test.js) | 8 | Aggregation, timeseries, profile, pathologies |
+| [`integration.test.js`](tests/integration.test.js) | 2 | End-to-end: POST → metrics pipeline |
+| [`async-pipeline.test.js`](tests/async-pipeline.test.js) | 32 | Redis Streams delivery, worker idempotency, crash recovery |
+| [`multi-tenancy.test.js`](tests/multi-tenancy.test.js) | 43 | Cross-tenant reads/writes, JWT tampering, UUID guessing |
+| [`observability.test.js`](tests/observability.test.js) | 37 | Structured logs, trace propagation, latency accuracy |
+| **Total** | **161** | |
+
+**Load tests**: k6 scripts in [`loadtest/`](loadtest/) — see [`LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) for methodology and results.
+
+---
+
+## 📊 Proof & Reports
+
+| Report | Location | Summary |
+|--------|----------|---------|
+| Idempotency | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) | 15 tests: concurrent duplicates, DB uniqueness, response equivalence |
+| Async Pipeline | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) | 32 tests: Redis Streams delivery, metric computation, crash recovery |
+| Multi-Tenancy | [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) | 43 tests: cross-tenant isolation, JWT tampering, conflict-path data leak fix |
+| Observability | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) | 37 tests: structured JSON logs, traceId propagation, health endpoint |
+| Load Test | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) | 200 req/s × 60s, p95 write = 4.19ms, p95 read = 8.48ms, 0% errors |
+
+---
+
+## 📈 Performance Summary
+
+| Metric | Target | Achieved |
+|--------|--------|----------|
+| Write throughput | ≥ 200 req/s | **200 req/s** sustained (constant-arrival-rate) |
+| Write p95 latency | ≤ 150ms | **4.19ms** |
+| Read p95 latency | ≤ 200ms | **8.48ms** |
+| Error rate | < 1% | **0.000%** |
+| Concurrent VUs | Multiple | **150–152 VUs** |
+| Trade lookup | < 10ms | **1.19ms** (PK index scan) |
+| Timeseries query | < 10ms | **1.77ms** (bitmap index scan) |
+| Idempotent insert | < 10ms | **4.34ms** (ON CONFLICT DO NOTHING) |
+
+---
+
+## 📁 Project Structure
+
+```
+paper-trading-behavioral-engine/
+├── docker-compose.yml              # 4-service stack: api, worker, postgres, redis
+├── Dockerfile                      # Node 20 Alpine — migrate → seed → serve
+├── DECISIONS.md                    # Engineering rationale with EXPLAIN ANALYZE
+│
+├── src/
+│   ├── server.js                   # Express app + middleware chain
+│   ├── config.js                   # Centralized config
+│   ├── migrate.js                  # SQL migration runner
+│   ├── seed.js                     # JSON seed loader (388 trades, 52 sessions)
+│   ├── middleware/                  # auth · tenancy · traceId · errorHandler
+│   ├── routes/                     # trades · sessions · users · health
+│   ├── services/                   # tradeService · sessionService · metricsService · publisher
+│   ├── workers/                    # XREADGROUP consumer + 5 metric computations
+│   ├── plugins/                    # pg.Pool + ioredis singletons
+│   └── utils/                      # jwt (HS256) · errors factory
+│
+├── tests/                          # 161 integration tests + 4 detailed reports
+├── loadtest/                       # k6 scripts + LOAD_TEST_REPORT.md
+├── migrations/                     # 4 SQL schemas (idempotent, sequential)
+├── scripts/                        # Token generation CLI
+└── given/                          # OpenAPI spec + seed dataset + JWT format
 ```
 
 ---
 
 ## Seed Users
 
-| # | Name | userId | Pathology | Trades |
-|---|------|--------|-----------|--------|
-| 1 | Alex Mercer | `f412f236-4edc-47a2-8f54-8763a6ed2ce8` | revenge_trading | 25 |
-| 2 | Jordan Lee | `fcd434aa-2201-4060-aeb2-f44c77aa0683` | overtrading | 80 |
-| 3 | Sam Rivera | `84a6a3dd-f2d0-4167-960b-7319a6033d49` | fomo_entries | 30 |
-| 4 | Casey Kim | `4f2f0816-f350-4684-b6c3-29bbddbb1869` | plan_non_adherence | 35 |
-| 5 | Morgan Bell | `75076413-e8e8-44ac-861f-c7acb3902d6d` | premature_exit | 35 |
-| 6 | Taylor Grant | `8effb0f2-f16b-4b5f-87ab-7ffca376f309` | loss_running | 30 |
-| 7 | Riley Stone | `50dd1053-73b0-43c5-8d0f-d2af88c01451` | session_tilt | 40 |
-| 8 | Drew Patel | `af2cfc5e-c132-4989-9c12-2913f89271fb` | time_of_day_bias | 48 |
-| 9 | Quinn Torres | `9419073a-3d58-4ee6-a917-be2d40aecef2` | position_sizing_inconsistency | 35 |
-| 10 | Avery Chen | `e84ea28c-e5a7-49ef-ac26-a873e32667bd` | *(clean trader)* | 30 |
+| # | Name | Pathology | Trades |
+|---|------|-----------|--------|
+| 1 | Alex Mercer | revenge_trading | 25 |
+| 2 | Jordan Lee | overtrading | 80 |
+| 3 | Sam Rivera | fomo_entries | 30 |
+| 4 | Casey Kim | plan_non_adherence | 35 |
+| 5 | Morgan Bell | premature_exit | 35 |
+| 6 | Taylor Grant | loss_running | 30 |
+| 7 | Riley Stone | session_tilt | 40 |
+| 8 | Drew Patel | time_of_day_bias | 48 |
+| 9 | Quinn Torres | position_sizing_inconsistency | 35 |
+| 10 | Avery Chen | *(clean trader)* | 30 |
 
 ---
-
-## Running Tests
-
-Tests run against the **live Docker stack** (integration tests, not mocks).
-
-```bash
-# Make sure the stack is running
-docker compose up -d
-
-# Run all 34 tests
-npm test
-```
-
-**Test suite**:
-| File | Tests | What it proves |
-|------|-------|----------------|
-| `tests/auth.test.js` | 8 | JWT verification, expiry, missing header, cross-tenant |
-| `tests/trades.test.js` | 12 | Idempotency, P&L computation, tenancy, validation |
-| `tests/sessions.test.js` | 4 | Session lookup, debrief, coaching SSE |
-| `tests/metrics.test.js` | 8 | Metrics aggregation, timeseries, profile, pathologies |
-| `tests/integration.test.js` | 2 | End-to-end: POST trade → metrics update, health check |
-
----
-
-## Load Testing
-
-Load tests use [k6](https://grafana.com/docs/k6/latest/) to simulate 200 concurrent users POSTing closed trades.
-
-```bash
-# Windows (k6.exe in project root)
-$env:TOKEN = node scripts/generate-token.js f412f236-4edc-47a2-8f54-8763a6ed2ce8
-.\k6.exe run loadtest/k6-trade-close.js
-
-# Linux/Mac
-export TOKEN=$(node scripts/generate-token.js f412f236-4edc-47a2-8f54-8763a6ed2ce8)
-k6 run loadtest/k6-trade-close.js
-```
-
-**Results** (Docker Desktop, Windows, WSL2):
-
-| Metric | Target | Result |
-|--------|--------|--------|
-| Requests | — | 55,397 in 60s |
-| Throughput | 200 req/s | **921 req/s** |
-| p95 latency | ≤ 150ms | **139ms** (at 100 VUs) |
-| Error rate | < 1% | **0.00%** |
-
-> **Note**: p95 at 200 VUs was 280ms due to Docker Desktop WSL2 networking overhead. At 100 VUs, p95 drops to 139ms. On native Linux, 200 VUs should comfortably clear the 150ms threshold.
-
----
-
-## Project Structure
-
-```
-paper-trading-behavioral-engine/
-├── docker-compose.yml          # 4-service stack: api, worker, postgres, redis
-├── Dockerfile                  # Node 20 Alpine, migrate → seed → serve
-├── DECISIONS.md                # 7 design decisions with EXPLAIN ANALYZE
-├── package.json                # 6 production deps, 1 dev dep
-├── .env.example                # Environment variable template
-│
-├── migrations/                 # SQL schema (idempotent, sequential)
-│   ├── 001_create_trades.sql
-│   ├── 002_create_sessions.sql
-│   ├── 003_create_debriefs.sql
-│   └── 004_create_metrics.sql
-│
-├── src/
-│   ├── server.js               # Express bootstrap + middleware chain
-│   ├── config.js               # Centralized env var access
-│   ├── migrate.js              # Run SQL migrations in order
-│   ├── seed.js                 # Load JSON seed data (388 trades, 52 sessions)
-│   │
-│   ├── middleware/
-│   │   ├── auth.js             # JWT HS256 verification → req.userId
-│   │   ├── tenancy.js          # Cross-tenant → 403 enforcement
-│   │   ├── traceId.js          # crypto.randomUUID() per request
-│   │   └── errorHandler.js     # Global catch-all → { error, message, traceId }
-│   │
-│   ├── plugins/
-│   │   ├── database.js         # pg.Pool singleton (max: 20)
-│   │   └── redis.js            # ioredis client singleton
-│   │
-│   ├── routes/
-│   │   ├── trades.js           # POST + GET /trades
-│   │   ├── sessions.js         # GET session, POST debrief, GET coaching (SSE)
-│   │   ├── users.js            # GET metrics, GET profile
-│   │   └── health.js           # GET /health (no auth)
-│   │
-│   ├── services/
-│   │   ├── tradeService.js     # Insert (idempotent), P&L computation, column mapping
-│   │   ├── sessionService.js   # Session summary, debrief persistence
-│   │   ├── metricsService.js   # Timeseries bucketing, profile/pathology analysis
-│   │   └── publisher.js        # XADD to trade:closed Redis Stream
-│   │
-│   ├── workers/
-│   │   ├── index.js            # XREADGROUP consumer loop + crash recovery
-│   │   ├── planAdherence.js    # Rolling 10-trade average
-│   │   ├── revengeFlag.js      # 90s window + anxious/fearful detection
-│   │   ├── sessionTilt.js      # Loss-following ratio per session
-│   │   ├── winRateByEmotion.js # Per-emotion win/loss/winRate
-│   │   └── overtradingDetector.js # 10 trades in 30 min detection
-│   │
-│   └── utils/
-│       ├── jwt.js              # Custom HS256 sign/verify (crypto.createHmac)
-│       └── errors.js           # Standardized { error, message, traceId } factory
-│
-├── tests/                      # 34 integration tests (node:test runner)
-├── loadtest/                   # k6 load test (200 VUs, 60s)
-├── scripts/
-│   └── generate-token.js       # CLI: generate 24h JWT for any userId
-└── given/                      # Hackathon spec files (read-only)
-    ├── nevup_openapi.yaml
-    ├── nevup_seed_dataset.json
-    ├── nevup_seed_dataset.csv
-    └── jwt_format.md
-```
-
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://nevup:nevup@postgres:5432/nevup` | PostgreSQL connection string |
-| `REDIS_URL` | `redis://redis:6379` | Redis connection string |
-| `JWT_SECRET` | `97791d4db2aa...` | HS256 signing secret (from spec) |
-| `PORT` | `3000` | API server port |
-| `NODE_ENV` | `production` | Environment mode |
-| `LOG_LEVEL` | `info` | Pino log level |
-
-All variables have sensible defaults for Docker Compose. Copy `.env.example` to `.env` for local development outside Docker.
-
----
-
-## Key Design Principles
-
-1. **Idempotency**: `INSERT ... ON CONFLICT (trade_id) DO NOTHING` — POST the same trade twice, get the same 200 response both times.
-2. **Tenancy**: Every data endpoint checks `JWT.sub === resource.userId`. Cross-tenant access always returns 403, never 404.
-3. **Async Pipeline**: Metrics computed asynchronously via Redis Streams — the write path (POST /trades) is never blocked by analytics.
-4. **Structured Logging**: Every request produces JSON logs with `traceId`, `userId`, `latency`, `statusCode`. Same `traceId` appears in error response bodies.
-5. **Zero-config startup**: `docker compose up` runs migrations, seeds data, starts API + worker. No manual steps.
 
 See [DECISIONS.md](DECISIONS.md) for the full engineering rationale with `EXPLAIN ANALYZE` output.

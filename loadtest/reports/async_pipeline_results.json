@@ -1,0 +1,12 @@
+{
+  "totalRequests": 12001,
+  "errors": 0,
+  "droppedIterations": 0,
+  "writeLatency": {
+    "p50": 1.94,
+    "p95": 2.97,
+    "p99": 3.93
+  },
+  "queueLag": 9,
+  "verdict": "ASYNC_PIPELINE_PROVEN"
+}

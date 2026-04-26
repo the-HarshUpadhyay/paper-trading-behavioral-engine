@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-04-26T05:55:22.910Z",
+  "environment": "native Pop!_OS Docker",
+  "throughput": {
+    "totalRequests": 18002,
+    "avgReqPerSec": 297.5,
+    "writeSuccesses": 12001,
+    "readSuccesses": 6001,
+    "writeErrors": 0,
+    "readErrors": 0,
+    "droppedIterations": 0,
+    "errorRate": 0
+  },
+  "writeLatency": {
+    "p50": 2.05,
+    "p90": 3.26,
+    "p95": 4.19,
+    "p99": 6.94
+  },
+  "readLatency": {
+    "p50": 4.27,
+    "p90": 7.23,
+    "p95": 8.48,
+    "p99": 13.18
+  },
+  "validation": {
+    "writP95Pass": true,
+    "readP95Pass": true,
+    "errorRatePass": true,
+    "droppedPass": true
+  }
+}
