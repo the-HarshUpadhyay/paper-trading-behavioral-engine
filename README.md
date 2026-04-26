@@ -270,4 +270,12 @@ See [DECISIONS.md](DECISIONS.md) for the full engineering rationale with `EXPLAI
 
 ## 🌐 Deployment
 
-The service is fully containerized and deployable on any Docker-compatible platform (ECS, GKE, Railway, Fly.io). A live deployment URL will be provided at submission time.
+**Live URL**: [`http://57.159.31.142:3000`](http://57.159.31.142:3000)
+
+The service is deployed on an Azure VM (Ubuntu 24.04, Standard B2ats_v2) running the same `docker compose up --build` stack. The deployment is identical to what you get locally — same containers, same compose file, zero platform-specific changes.
+
+```bash
+# Verify live deployment
+curl http://57.159.31.142:3000/health
+# → {"status":"ok","dbConnection":"connected","queueLag":0,"timestamp":"..."}
+```
