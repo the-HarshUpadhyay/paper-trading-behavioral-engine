@@ -13,7 +13,7 @@
 
 A production-grade backend that ingests closed trades, computes behavioral analytics asynchronously via Redis Streams, and serves queryable metrics — all with strict multi-tenancy, idempotent writes, and structured observability.
 
-NevUp uses this system as the **source of truth for trader behavior** — not just P&L, but psychological patterns like revenge trading, overtrading, and emotional bias. These signals power downstream AI coaching (Track 2) and user-facing insights (Track 3).
+NevUp uses this system as the **source of truth for trader behavior** — not just P&L, but psychological patterns like revenge trading, overtrading, and emotional bias. These signals power downstream AI coaching (Track 2) and user-facing insights (Track 3). Behavioral metrics are deterministic — identical inputs produce identical outputs across independent implementations.
 
 **Key guarantees:**
 
@@ -95,6 +95,8 @@ curl http://localhost:3000/health
 ```
 
 Zero manual steps. No `.env` file required. All defaults are set in `docker-compose.yml`.
+
+Seed dataset (388 trades, 52 sessions, 10 traders) is automatically loaded on startup and immediately queryable via the read APIs.
 
 ---
 
