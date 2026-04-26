@@ -23,7 +23,12 @@ const config = {
   },
 
   jwt: {
-    secret: process.env.JWT_SECRET || '97791d4db2aa5f689c3cc39356ce35762f0a73aa70923039d8ef72a2840a1b02',
+    secret: (() => {
+      if (!process.env.JWT_SECRET) {
+        throw new Error('FATAL: JWT_SECRET environment variable is required but not set.');
+      }
+      return process.env.JWT_SECRET;
+    })(),
     expiresInSeconds: 86400, // 24 hours
   },
 

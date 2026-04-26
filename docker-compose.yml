@@ -56,6 +56,7 @@ services:
     environment:
       DATABASE_URL: postgresql://nevup:nevup@postgres:5432/nevup
       REDIS_URL: redis://redis:6379
+      JWT_SECRET: 97791d4db2aa5f689c3cc39356ce35762f0a73aa70923039d8ef72a2840a1b02
       NODE_ENV: production
       LOG_LEVEL: info
     depends_on:

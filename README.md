@@ -67,11 +67,11 @@ NevUp uses this system as the **source of truth for trader behavior** — not ju
 
 | Requirement | Implementation | Proof |
 |---|---|---|
-| **Idempotent Write** | `INSERT ... ON CONFLICT (trade_id) DO NOTHING`; conflict-path tenancy guard | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 15 tests |
+| **Idempotent Write** | `INSERT ... ON CONFLICT (trade_id) DO NOTHING`; conflict-path tenancy guard | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 12 tests |
 | **Throughput ≥ 200 req/s** | `pg.Pool(max:20)`, async Redis publish, `constant-arrival-rate` k6 executor | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) — 200 req/s sustained 60s |
 | **Write p95 ≤ 150ms** | Connection pooling, indexed conflict resolution, zero sync analytics | Load report — **4.19ms** (35× headroom) |
 | **Read p95 ≤ 200ms** | Composite indexes, bitmap scans, in-memory aggregation | Load report — **8.48ms** (23× headroom) |
-| **Async Pipeline** | Redis Streams `XADD`/`XREADGROUP`, separate worker container, `XACK` delivery | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 32 tests |
+| **Async Pipeline** | Redis Streams `XADD`/`XREADGROUP`, separate worker container, `XACK` delivery | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 25 tests |
 | **Multi-tenancy** | JWT `sub` enforcement at path, body, and resource levels; 403 for cross-tenant | [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) — 43 tests |
 | **Observability** | pino-http structured JSON; traceId + userId + latency + statusCode on every log | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) — 37 tests |
 | **Health Check** | `GET /health` returns `dbConnection`, `queueLag`, `status`, `timestamp` | Observability report — Suite 6 |
@@ -169,14 +169,14 @@ docker run --rm \
 |-------|-------|----------------|
 | [`auth.test.js`](tests/auth.test.js) | 8 | JWT verification, expiry, missing header |
 | [`trades.test.js`](tests/trades.test.js) | 12 | Idempotency, P&L computation, validation |
-| [`idempotency.test.js`](tests/idempotency.test.js) | 15 | Concurrent duplicate writes, DB-level verification |
+| [`idempotency.test.js`](tests/idempotency.test.js) | 12 | Concurrent duplicate writes, DB-level verification |
 | [`sessions.test.js`](tests/sessions.test.js) | 4 | Session lookup, debrief, coaching SSE |
 | [`metrics.test.js`](tests/metrics.test.js) | 8 | Aggregation, timeseries, profile, pathologies |
 | [`integration.test.js`](tests/integration.test.js) | 2 | End-to-end: POST → metrics pipeline |
-| [`async-pipeline.test.js`](tests/async-pipeline.test.js) | 32 | Redis Streams delivery, worker idempotency, crash recovery |
+| [`async-pipeline.test.js`](tests/async-pipeline.test.js) | 25 | Redis Streams delivery, worker idempotency, crash recovery |
 | [`multi-tenancy.test.js`](tests/multi-tenancy.test.js) | 43 | Cross-tenant reads/writes, JWT tampering, UUID guessing |
 | [`observability.test.js`](tests/observability.test.js) | 37 | Structured logs, trace propagation, latency accuracy |
-| **Total** | **161** | |
+| **Total** | **151** | |
 
 **Load tests**: k6 scripts in [`loadtest/`](loadtest/) — see [`LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) for methodology and results.
 
@@ -229,9 +229,9 @@ paper-trading-behavioral-engine/
 │   ├── plugins/                    # pg.Pool + ioredis singletons
 │   └── utils/                      # jwt (HS256) · errors factory
 │
-├── tests/                          # 161 integration tests + 4 detailed reports
+├── tests/                          # 151 integration tests + 4 detailed reports
 ├── loadtest/                       # k6 scripts + LOAD_TEST_REPORT.md
-├── migrations/                     # 4 SQL schemas (idempotent, sequential)
+├── migrations/                     # 5 SQL schemas (idempotent, sequential)
 ├── scripts/                        # Token generation CLI
 └── given/                          # OpenAPI spec + seed dataset + JWT format
 ```

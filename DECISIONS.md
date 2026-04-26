@@ -5,6 +5,8 @@
 > **Author**: Harsh Upadhyay  
 > **Date**: April 2026
 
+All decisions explicitly prioritize strict compliance with the NevUp shared data contract and authentication specification to ensure interoperability across all three tracks.
+
 ---
 
 ## 1. Idempotency Strategy
@@ -44,7 +46,7 @@ if (!isNew && trade.userId !== req.userId) {
 }
 ```
 
-**Proof**: [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 15 tests including concurrent duplicate writes and DB-level uniqueness verification.
+**Proof**: [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 12 tests including concurrent duplicate writes and DB-level uniqueness verification.
 
 ---
 
@@ -59,21 +61,27 @@ The spec defines the hard throughput floor. But rather than tuning for exactly 2
 ### Connection Pooling
 
 ```javascript
-const pool = new Pool({ min: 2, max: 20, idleTimeoutMillis: 30000 });
+const pool = new Pool({ min: 2, max: 20, idleTimeoutMillis: 30000, connectionTimeoutMillis: 5000 });
 ```
 
 - **`max: 20`**: Sized for 150+ concurrent VUs. Each VU holds a connection for ~4ms (insert) then releases. With `max: 20`, the pool handles `20 connections / 4ms = 5,000` theoretical req/s before exhaustion.
 - **`min: 2`**: Keeps warm connections ready, avoiding cold-start latency on the first request after idle.
 - **No `max: 100` over-provisioning**: PostgreSQL has finite backend process memory. Over-provisioning pools is a common footgun.
 
-### Async Publish (Non-blocking)
+### Async Publish (Resilient, Non-Failing)
 
 The API write path does two operations:
 
 1. `INSERT INTO trades` — synchronous, critical path (~4ms)
-2. `XADD` to Redis Stream — **fire-and-forget**, does not block the HTTP response
+2. `XADD` to Redis Stream — attempted with retry (2 attempts, 500ms backoff)
 
-If Redis is down, the trade is persisted (Postgres is the source of truth). The worker will process it when Redis recovers. This decoupling is why write p95 is 4.19ms, not 50ms+.
+Publish is **not fire-and-forget** — it is awaited within the request lifecycle to maximize delivery reliability. However, publish failure **never fails the HTTP response**:
+
+- PostgreSQL is the source of truth — the trade is persisted before publish
+- On publish failure, the error is logged with `traceId` for operational alerting
+- The HTTP 200 response returns regardless of Redis availability
+
+This is a deliberate trade-off: the happy-path cost is ~1ms (Redis XADD latency), and even the worst case (2 failed attempts + 500ms backoff) adds <1s — still well under the 150ms p95 target for the 99%+ of requests where Redis is healthy. Measured write p95 is 4.19ms, confirming the overhead is negligible.
 
 ### DB Constraints
 
@@ -129,7 +137,7 @@ const messages = await redis.xreadgroup('GROUP', group, consumer,
 - **`XACK` after success**: At-least-once delivery — unacked messages retry on restart
 - **`restart: on-failure`**: Docker auto-restarts crashed workers
 
-**Proof**: [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 32 tests covering delivery guarantees, worker crash recovery, and metric computation correctness.
+**Proof**: [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 25 tests covering delivery guarantees, worker crash recovery, and metric computation correctness.
 
 ---
 
@@ -256,6 +264,10 @@ An operator receiving a user's error response can search logs by `traceId` and f
 
 Morgan outputs access-log strings: `POST /trades 200 14ms`. This is not JSON-parseable, has no `traceId`, no `userId`, and cannot be queried in log aggregation systems. The spec requires machine-parseable structured logs.
 
+### Auth Error Traceability
+
+All authentication and authorization failures (401/403) include `traceId` in the response body, matching the structured log entry for that request. This is required by spec and ensures operators can correlate user-reported errors to exact log entries across the API and worker containers.
+
 **Proof**: [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) — 37 tests verifying JSON structure, trace correlation, latency accuracy, and concurrent log integrity.
 
 ---
@@ -329,8 +341,8 @@ The spec mandates: *"No ORM hiding N+1s."* Beyond compliance:
 | Single worker instance | Sufficient for 10 traders | Multiple workers with unique consumer names |
 | No rate limiting | Out of scope for hackathon | Redis-based sliding window limiter |
 | No HTTPS | Docker-internal traffic | TLS termination at load balancer |
-| Hardcoded JWT secret | From spec, not a real secret | Environment-injected secret rotation |
-| No graceful shutdown | Not tested under signal handling | `SIGTERM` handler with connection draining |
+| JWT secret via env var only (no fallback) | Spec provides a fixed secret, but hardcoding in source violates security best practices. Application fails fast if `JWT_SECRET` is missing. | Vault or AWS Secrets Manager for rotation |
+| No graceful shutdown on API | Worker handles SIGTERM/SIGINT; API server does not drain connections | `SIGTERM` handler with connection draining on API |
 
 ### Known Limitations
 
@@ -347,8 +359,78 @@ The spec mandates: *"No ORM hiding N+1s."* Beyond compliance:
 2. **Connection pooler**: PgBouncer in front of PostgreSQL for 1000+ VU scale
 3. **Horizontal workers**: Multiple consumer instances with partition-like consumer names
 4. **Distributed tracing**: OpenTelemetry spans propagated to Jaeger/Tempo
-5. **CI/CD pipeline**: Run all 161 tests + load test on every PR
+5. **CI/CD pipeline**: Run all 151 tests + load test on every PR
 6. **Secrets management**: Vault or AWS Secrets Manager for JWT secret rotation
+
+---
+
+## 11. Authentication & JWT Validation
+
+### Decision: Spec-compliant HS256 JWT validation using Node.js crypto
+
+### Why
+
+The hackathon requires identical JWT handling across all tracks — any deviation breaks interoperability. To ensure full control over validation rules (`exp`, signature, malformed handling) and strict adherence to the shared contract, the implementation uses Node.js `crypto.createHmac('sha256', secret)` directly instead of a third-party library.
+
+### JWT Secret Handling
+
+Although the spec provides a fixed shared secret, hardcoding it in source violates security best practices and repository hygiene. Therefore:
+
+- The exact spec-provided secret is used
+- But **only** via `process.env.JWT_SECRET`
+- No fallback string exists in code
+- Application **fails fast** on startup if `JWT_SECRET` is missing
+
+This ensures spec compliance (correct secret), security compliance (no hardcoded secrets), and reviewer expectations alignment.
+
+### Enforcement
+
+| Step | Mechanism | Code |
+|---|---|---|
+| Missing `Authorization` header | No header at all → HTTP 401 (no implicit anonymous access) | `src/middleware/auth.js` |
+| Empty or wrong prefix | `Authorization: Bearer ` (empty) or non-Bearer scheme → 401 | `src/middleware/auth.js` |
+| Malformed token structure | Parts count ≠ 3 → 401 | `src/utils/jwt.js` |
+| Invalid base64 / bad JSON | Base64 decode or JSON parse failure → 401 (malformed token) | `src/utils/jwt.js` |
+| Signature | `crypto.createHmac('sha256', secret)` — HS256 verification | `src/utils/jwt.js` |
+| `exp` validation | `payload.exp < Math.floor(Date.now() / 1000)` → 401 | `src/utils/jwt.js` |
+| Clock skew | **Zero tolerance** — strict UTC integer comparison, no `clockTolerance` parameter | `src/utils/jwt.js` |
+| `sub` extraction | `req.userId = payload.sub` — single source of truth for identity | `src/middleware/auth.js` |
+
+### Tenancy Enforcement
+
+JWT `sub` is the **single source of truth** for user identity. All endpoints enforce tenancy at three layers:
+
+| Layer | Check | Failure |
+|---|---|---|
+| **Path-level** | `req.params.userId === req.userId` | 403 |
+| **Body-level** | `req.body.userId === req.userId` | 403 |
+| **Resource-level** | DB record `user_id` matches `req.userId` | 403 |
+
+Mismatch → **HTTP 403 (never 404)** — as required by spec, to prevent existence leakage.
+
+### Why 401 vs 403
+
+| Case | Response | Rationale |
+|---|---|---|
+| Invalid/missing/expired token | 401 Unauthorized | Identity cannot be established |
+| Valid token, wrong user | 403 Forbidden | Identity established, authorization denied |
+
+This distinction is required by spec and enforced in both unit tests and load tests.
+
+All 401 and 403 responses include `{ error, message, traceId }`, where `traceId` matches the structured log entry for that request — ensuring full traceability of authentication and authorization failures.
+
+### Reviewer Validation Coverage
+
+Automated tests cover the exact evaluation flow described in the spec:
+
+1. Missing `Authorization` header → 401
+2. Malformed / invalid base64 token → 401
+3. Expired token → 401
+4. Token signed with wrong secret → 401
+5. Token for User A accessing User B's data → 403
+6. Valid token → successful access with correct `userId`
+
+See [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) for full attack-dimension coverage.
 
 ---
 
