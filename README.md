@@ -13,6 +13,8 @@
 
 A production-grade backend that ingests closed trades, computes behavioral analytics asynchronously via Redis Streams, and serves queryable metrics — all with strict multi-tenancy, idempotent writes, and structured observability.
 
+NevUp uses this system as the **source of truth for trader behavior** — not just P&L, but psychological patterns like revenge trading, overtrading, and emotional bias. These signals power downstream AI coaching (Track 2) and user-facing insights (Track 3).
+
 **Key guarantees:**
 
 | Guarantee | Implementation |
@@ -21,7 +23,9 @@ A production-grade backend that ingests closed trades, computes behavioral analy
 | Idempotency | `INSERT ... ON CONFLICT (trade_id) DO NOTHING` — same trade twice → same 200 |
 | Multi-tenancy | JWT `sub` === resource `userId` on every endpoint; cross-tenant → 403 |
 | Performance | 200 req/s sustained, p95 write = 4.19ms, p95 read = 8.48ms |
+| Async Guarantee | All behavioral metrics computed outside the write path via Redis Streams — zero impact on write latency |
 | Observability | Structured JSON logs with `traceId`, `userId`, `latency`, `statusCode` on every request |
+| No ORM | Raw SQL with parameterized queries via `pg` — no hidden N+1s, full query plan control |
 
 ---
 
@@ -72,6 +76,8 @@ A production-grade backend that ingests closed trades, computes behavioral analy
 | **Observability** | pino-http structured JSON; traceId + userId + latency + statusCode on every log | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) — 37 tests |
 | **Health Check** | `GET /health` returns `dbConnection`, `queueLag`, `status`, `timestamp` | Observability report — Suite 6 |
 
+> **Note**: Spec fields `latency` and `statusCode` are implemented as `responseTime` (pino-http convention) and `res.statusCode` in structured logs.
+
 ---
 
 ## 🐳 Running the System
@@ -94,7 +100,7 @@ Zero manual steps. No `.env` file required. All defaults are set in `docker-comp
 
 ## 📡 API Reference
 
-Full spec: [`given/nevup_openapi.yaml`](given/nevup_openapi.yaml)
+This service fully implements the [OpenAPI 3.0 contract](given/nevup_openapi.yaml) (`given/nevup_openapi.yaml`) with no deviations in schema or field definitions.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -247,4 +253,19 @@ paper-trading-behavioral-engine/
 
 ---
 
+## 🧩 Key Design Choices
+
+- **PostgreSQL** as source of truth — ACID + strong consistency for financial data
+- **Redis Streams** for async event processing — at-least-once delivery via `XREADGROUP`/`XACK`
+- **`ON CONFLICT DO NOTHING`** for idempotency — atomic, lock-free, race-safe
+- **Structured logging** via pino — production-grade JSON observability with traceId correlation
+- **Raw SQL** via `pg` — no ORM hiding N+1 queries (spec constraint)
+- **Application-layer tenancy** — explicit `if/return 403` over invisible RLS row filtering
+
 See [DECISIONS.md](DECISIONS.md) for the full engineering rationale with `EXPLAIN ANALYZE` output.
+
+---
+
+## 🌐 Deployment
+
+The service is fully containerized and deployable on any Docker-compatible platform (ECS, GKE, Railway, Fly.io). A live deployment URL will be provided at submission time.
