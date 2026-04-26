@@ -67,11 +67,11 @@ NevUp uses this system as the **source of truth for trader behavior** — not ju
 
 | Requirement | Implementation | Proof |
 |---|---|---|
-| **Idempotent Write** | `INSERT ... ON CONFLICT (trade_id) DO NOTHING`; conflict-path tenancy guard | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 12 tests |
-| **Throughput ≥ 200 req/s** | `pg.Pool(max:20)`, async Redis publish, `constant-arrival-rate` k6 executor | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) — 200 req/s sustained 60s |
-| **Write p95 ≤ 150ms** | Connection pooling, indexed conflict resolution, zero sync analytics | Load report — **4.19ms** (35× headroom) |
-| **Read p95 ≤ 200ms** | Composite indexes, bitmap scans, in-memory aggregation | Load report — **8.48ms** (23× headroom) |
-| **Async Pipeline** | Redis Streams `XADD`/`XREADGROUP`, separate worker container, `XACK` delivery | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 25 tests |
+| **Idempotent Write** | `INSERT ... ON CONFLICT (trade_id) DO NOTHING`; conflict-path tenancy guard | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) — 12 tests<br>[`loadtest/reports/idempotency_dashboard.html`](loadtest/reports/idempotency_dashboard.html) |
+| **Throughput ≥ 200 req/s** | `pg.Pool(max:20)`, async Redis publish, `constant-arrival-rate` k6 executor | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) — 200 req/s sustained 60s<br>[`loadtest/reports/spec_dashboard.html`](loadtest/reports/spec_dashboard.html) |
+| **Write p95 ≤ 150ms** | Connection pooling, indexed conflict resolution, zero sync analytics | Load report — **4.19ms** (35× headroom)<br>[`loadtest/reports/spec_dashboard.html`](loadtest/reports/spec_dashboard.html) |
+| **Read p95 ≤ 200ms** | Composite indexes, bitmap scans, in-memory aggregation | Load report — **8.48ms** (23× headroom)<br>[`loadtest/reports/spec_dashboard.html`](loadtest/reports/spec_dashboard.html) |
+| **Async Pipeline** | Redis Streams `XADD`/`XREADGROUP`, separate worker container, `XACK` delivery | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) — 25 tests<br>[`loadtest/reports/async_pipeline_dashboard.html`](loadtest/reports/async_pipeline_dashboard.html) |
 | **Multi-tenancy** | JWT `sub` enforcement at path, body, and resource levels; 403 for cross-tenant | [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) — 43 tests |
 | **Observability** | pino-http structured JSON; traceId + userId + latency + statusCode on every log | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) — 37 tests |
 | **Health Check** | `GET /health` returns `dbConnection`, `queueLag`, `status`, `timestamp` | Observability report — Suite 6 |
@@ -186,11 +186,11 @@ docker run --rm \
 
 | Report | Location | Summary |
 |--------|----------|---------|
-| Idempotency | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md) | 15 tests: concurrent duplicates, DB uniqueness, response equivalence |
-| Async Pipeline | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md) | 32 tests: Redis Streams delivery, metric computation, crash recovery |
+| Idempotency | [`tests/IDEMPOTENCY_TEST_REPORT.md`](tests/IDEMPOTENCY_TEST_REPORT.md)<br>[`loadtest/reports/idempotency_dashboard.html`](loadtest/reports/idempotency_dashboard.html) | 15 tests: concurrent duplicates, DB uniqueness, response equivalence |
+| Async Pipeline | [`tests/ASYNC_PIPELINE_REPORT.md`](tests/ASYNC_PIPELINE_REPORT.md)<br>[`loadtest/reports/async_pipeline_dashboard.html`](loadtest/reports/async_pipeline_dashboard.html) | 32 tests: Redis Streams delivery, metric computation, crash recovery |
 | Multi-Tenancy | [`tests/MULTI_TENANCY_REPORT.md`](tests/MULTI_TENANCY_REPORT.md) | 43 tests: cross-tenant isolation, JWT tampering, conflict-path data leak fix |
 | Observability | [`tests/OBSERVABILITY_REPORT.md`](tests/OBSERVABILITY_REPORT.md) | 37 tests: structured JSON logs, traceId propagation, health endpoint |
-| Load Test | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md) | 200 req/s × 60s, p95 write = 4.19ms, p95 read = 8.48ms, 0% errors |
+| Load Test | [`loadtest/LOAD_TEST_REPORT.md`](loadtest/LOAD_TEST_REPORT.md)<br>[`loadtest/reports/spec_dashboard.html`](loadtest/reports/spec_dashboard.html) | 200 req/s × 60s, p95 write = 4.19ms, p95 read = 8.48ms, 0% errors |
 
 ---
 
